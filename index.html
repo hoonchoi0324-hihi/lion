@@ -1,4 +1,4 @@
-\<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -331,7 +331,7 @@ const ABOUT={
   clubs:[
    {name:'클럽 정보',info:['소속: 국제라이온스협회 354-H지구 3지역','월례회: 매월 셋째 주 월요일 · 클럽 사무실','금촌1동 행정복지센터와 업무협약을 맺고 복지 사각지대 이웃 지원','해마다 겨울 연탄 나눔 봉사']}
   ],
-  presidents:[{term:'2025–2026',name:'유용숙'},{term:'2024–2025',name:'이원경'},{term:'2022–2023',name:'한진희'}],
+  presidents:[{term:'2026–2027',name:'정한미'},{term:'2025–2026',name:'유용숙'},{term:'2024–2025',name:'이원경 (코스모스)'},{term:'2023–2024',name:'최병제 (율곡)'},{term:'2022–2023',name:'한진희 (코스모스)'}],
   services:['겨울철 연탄 나눔 (금촌1동 취약계층 가정)','명절 생필품 기탁 (즉석밥·컵라면·라면 등)','지대 합동 봉사 (임진강·CEO 클럽과 함께)','파주시 드림스타트 아동 후원 (가온클럽과 합동)'],
   history:[
    {y:'2020',t:'가온클럽과 합동으로 파주시 드림스타트에 약 1,000만 원 상당 영유아 물품 후원\n금촌1동 행정복지센터와 업무협약'},
@@ -422,7 +422,7 @@ function startData(){
  col('officers',a=>{const t={};a.forEach(d=>t[d.id]=Array.isArray(d.list)?d.list.filter(Boolean):Object.values(d.list||{}));DB.terms=t});
 }
 /* 다른 사람이 바꾼 내용이 들어오면 화면 새로 그리기 (입력 중인 화면은 건드리지 않음) */
-const FORM_VIEWS=['memberEdit','eventEdit','noticeEdit','docEdit','officersEdit','pwChange'];
+const FORM_VIEWS=['adminAuth','memberEdit','eventEdit','eventRepeat','noticeEdit','docEdit','officersEdit','pwChange'];
 function refresh(){
  if(phase!=='app')return;
  if(FORM_VIEWS.includes(view))return;
@@ -469,6 +469,13 @@ const ACT={
   const data={type:g('type'),title:g('title'),date:g('date'),time:g('time'),place:g('place'),desc:$('#f_desc').value};
   const id=params.id;
   if(await run(()=>id?update(R('events/'+id),data):push(R('events'),{...data,createdAt:serverTimestamp()}),'일정이 저장되었습니다'))back();
+ },
+ repSave:async()=>{
+  const type=$('#r_type').value,tt=$('#r_title').value.trim()||'{월}월 '+type,time=$('#r_time').value,place=$('#r_place').value.trim(),desc=$('#r_desc').value;
+  const ds=repDates().filter(d=>!DB.events.some(e=>e.date===d&&e.type===type));
+  if(!ds.length)return toast('새로 만들 날짜가 없습니다');
+  const up={};ds.forEach(d=>{const k=push(R('events')).key;up['events/'+k]={type,title:tt.replace('{월}',String(+d.slice(5,7))),date:d,time,place,desc,createdAt:serverTimestamp()}});
+  if(await run(()=>update(R(''),up),`일정 ${ds.length}개를 만들었습니다`))back();
  },
  evDel:el=>confirmBox('이 일정을 삭제할까요?',async()=>{if(await run(()=>remove(R('events/'+el.dataset.id)),'삭제되었습니다')&&view==='eventEdit')back()},'삭제'),
  ntSave:async()=>{
@@ -569,6 +576,16 @@ document.addEventListener('submit',async e=>{
   const name=$('#p_name').value.trim();if(!name)return toast('성명을 입력해 주세요');
   const ph=digits((authUser.email||'').split('@')[0]);
   await run(()=>set(R('members/'+authUser.uid),{name,phone:fmtPhone(ph),biz:'',job:'',joined:String(new Date().getFullYear()),intro:'',photo:null,position:'회원',role:'member',active:true,consent:allOn(),createdAt:serverTimestamp()}),'저장되었습니다');
+ }
+ if(f.id==='adminForm'){
+  const code=$('#a_code').value.trim();if(!code)return toast('관리자 코드를 입력해 주세요');
+  try{
+   await set(R('adminClaims/'+me.id),code);            // 서버 규칙이 코드가 맞는지 확인
+   await update(R('members/'+me.id),{role:'admin'});
+   await remove(R('adminClaims/'+me.id));
+   toast('관리자가 되었습니다');back();
+  }catch(e){toast(/PERMISSION_DENIED/i.test(e.message||e.code||'')?'관리자 코드가 맞지 않습니다':errMsg(e))}
+  return;
  }
  if(f.id==='pwForm'){
   const o=$('#w_old').value,n=$('#w_new').value;
@@ -678,6 +695,14 @@ function calendar(f){
  <div class="calw">${'일월화수목금토'.split('').map((w,i)=>`<span class="${i===0?'sun':i===6?'sat':''}">${w}</span>`).join('')}</div><div class="calg">${cells}</div>
  <div class="calf"><button class="linkbtn" data-act="calToday">오늘</button><span class="hint">날짜를 누르면 그날 일정을 볼 수 있습니다</span></div></div>`;
 }
+function repDates(){
+ const nth=+$('#r_nth').value,wd=+$('#r_wd').value,[y0,m0]=($('#r_from').value||todayStr().slice(0,7)).split('-').map(Number),cnt=+$('#r_cnt').value,out=[];
+ for(let i=0;i<cnt;i++){const y=y0+Math.floor((m0-1+i)/12),m=(m0-1+i)%12;let d;
+  if(nth>0){const first=new Date(y,m,1);d=1+((wd-first.getDay()+7)%7)+(nth-1)*7;if(d>new Date(y,m+1,0).getDate())continue}
+  else{const last=new Date(y,m+1,0);d=last.getDate()-((last.getDay()-wd+7)%7)}
+  out.push(y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'))}
+ return out.filter(d=>d>=todayStr()); // 지난 날짜는 빼고 만듦
+}
 const VIEWS={
 home(){
  const menu=[['members','전체 회원명부','사진·연락처·검색','users','tab'],['officers','회장단·임원진','직책별 연락처','award','go'],['events','행사 일정','월례회·봉사활동','cal','tab'],['notices','공지사항','클럽 주요 안내','mega','go'],['about','클럽 소개·연혁','역대 회장·연혁','hist','go'],['docs','자료실','회칙·회의 자료','folder','go']];
@@ -763,10 +788,28 @@ events(){
  const sel=ui.selDay?DB.events.filter(e=>e.date===ui.selDay&&f(e)).sort((a,b)=>(a.time||'').localeCompare(b.time||'')):null;
  return {title:'행사 일정',body:`<div class="chips" style="margin-top:0">${['전체',...EV_TYPES].map(t=>chip('evType',t,t,ui.evType)).join('')}</div>
  ${calendar(f)}
- ${sel?`<div class="section-title">${fmtD(ui.selDay)}</div>${sel.map(e=>eventCard(e,true)).join('')||empty('이 날은 일정이 없습니다')}${isAdmin()?`<button class="btn gold block" data-act="evNewOn" data-day="${ui.selDay}">${icon('plus')} 이 날 일정 등록</button>`:''}<div class="section-title">다가오는 일정 전체</div>`:(isAdmin()?`<button class="btn gold block" style="margin-top:12px" data-act="go" data-v="eventEdit">${icon('plus')} 새 일정 등록</button>`:'')}
+ ${sel?`<div class="section-title">${fmtD(ui.selDay)}</div>${sel.map(e=>eventCard(e,true)).join('')||empty('이 날은 일정이 없습니다')}${isAdmin()?`<button class="btn gold block" data-act="evNewOn" data-day="${ui.selDay}">${icon('plus')} 이 날 일정 등록</button>`:''}<div class="section-title">다가오는 일정 전체</div>`:(isAdmin()?`<div class="row2" style="margin-top:12px"><button class="btn gold" data-act="go" data-v="eventEdit">${icon('plus')} 새 일정</button><button class="btn line" data-act="go" data-v="eventRepeat">${icon('cal')} 매달 반복</button></div>`:'')}
  ${html||empty('예정된 일정이 없습니다')}
  <button class="btn line block" style="margin-top:10px" data-act="past">${ui.showPast?'지난 일정 숨기기':'지난 일정 보기 ('+past.length+')'}</button>
  ${ui.showPast?'<div style="height:12px"></div>'+(past.map(e=>eventCard(e,true)).join('')||empty('지난 일정이 없습니다')):''}`};
+},
+eventRepeat(){
+ if(!isAdmin())return {title:'권한 없음',body:empty('관리자만 사용할 수 있습니다')};
+ const ym=todayStr().slice(0,7);
+ return {title:'매달 반복 일정 만들기',body:`<div class="card form">
+ <p class="hint" style="margin-top:0">예: 매월 셋째 주 월요일 월례회를 1년치 한 번에 만듭니다. 이미 같은 날 같은 종류 일정이 있으면 건너뜁니다.</p>
+ <label class="lb">행사 종류</label><select class="inp" id="r_type">${EV_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+ <label class="lb">행사명 <span class="hint">({월}은 달로 바뀝니다)</span></label><input class="inp" id="r_title" value="{월}월 정기 월례회">
+ <div class="row2"><div style="flex:1"><label class="lb">몇째 주</label><select class="inp" id="r_nth">${['첫째','둘째','셋째','넷째','마지막'].map((t,i)=>`<option value="${i<4?i+1:-1}" ${i===2?'selected':''}>${t} 주</option>`).join('')}</select></div>
+ <div style="flex:1"><label class="lb">요일</label><select class="inp" id="r_wd">${'일월화수목금토'.split('').map((w,i)=>`<option value="${i}" ${i===1?'selected':''}>${w}요일</option>`).join('')}</select></div></div>
+ <label class="lb">시간</label><input class="inp" id="r_time" type="time" value="19:00">
+ <label class="lb">장소</label><input class="inp" id="r_place" value="클럽 사무실">
+ <div class="row2"><div style="flex:1"><label class="lb">시작 달</label><input class="inp" id="r_from" type="month" value="${ym}"></div>
+ <div style="flex:1"><label class="lb">몇 달</label><select class="inp" id="r_cnt">${[3,6,12].map(n=>`<option ${n===12?'selected':''}>${n}</option>`).join('')}</select></div></div>
+ <label class="lb">상세 내용 <span class="hint">(선택)</span></label><textarea class="inp" id="r_desc" style="min-height:90px"></textarea>
+ <div class="lb">만들어질 날짜</div><div id="r_prev" class="msub"></div></div>
+ <button class="btn primary block" data-act="repSave">한 번에 만들기</button>`,
+ after(){const f=()=>{$('#r_prev').textContent=repDates().map(d=>`${+d.slice(5,7)}/${+d.slice(8)}`).join(' · ')};document.querySelectorAll('#r_nth,#r_wd,#r_from,#r_cnt').forEach(e=>e.addEventListener('input',f));f()}};
 },
 eventEdit(){
  if(!isAdmin())return {title:'권한 없음',body:empty('관리자만 사용할 수 있습니다')};
@@ -824,11 +867,17 @@ more(){
  const items=[['members','전체 회원명부','users'],['officers','회장단 및 임원진','star'],['events','행사 일정','cal'],['notices','공지사항','bell'],['about','클럽 소개 및 연혁','book'],['docs','자료실','folder']];
  const li=([v,l,i])=>`<button class="li" data-act="${v==='members'||v==='events'?'tab':'go'}" data-v="${v}"><span class="ic2">${icon(i,26)}</span>${l}<span class="ch">${icon('chev')}</span></button>`;
  return {title:'전체메뉴',body:`<div class="card" style="display:flex;align-items:center;gap:14px"><img class="av" src="${avSrc(me)}" alt=""><div><div class="mname">${esc(me.name)}</div><div class="msub">${esc(me.position||'회원')} · ${isAdmin()?'관리자':'일반 회원'}</div></div></div>
- <div class="list"><button class="li" data-act="go" data-v="memberEdit" data-id="${me.id}"><span class="ic2">${icon('user',26)}</span>내 정보 수정<span class="ch">${icon('chev')}</span></button><button class="li" data-act="go" data-v="pwChange"><span class="ic2">${icon('lock',26)}</span>비밀번호 변경<span class="ch">${icon('chev')}</span></button></div>
+ <div class="list"><button class="li" data-act="go" data-v="memberEdit" data-id="${me.id}"><span class="ic2">${icon('user',26)}</span>내 정보 수정<span class="ch">${icon('chev')}</span></button><button class="li" data-act="go" data-v="pwChange"><span class="ic2">${icon('lock',26)}</span>비밀번호 변경<span class="ch">${icon('chev')}</span></button>${isAdmin()?'':`<button class="li" data-act="go" data-v="adminAuth"><span class="ic2">${icon('shield',26)}</span>관리자 인증<span class="ch">${icon('chev')}</span></button>`}</div>
  <div class="list">${items.map(li).join('')}</div>
  ${isAdmin()?`<div class="section-title">관리자 전용</div><div class="list"><button class="li" data-act="go" data-v="admin"><span class="ic2">${icon('gear',26)}</span>관리자 메뉴<span class="ch">${icon('chev')}</span></button></div>`:''}
  <button class="btn line block" style="margin-top:8px" data-act="logout">${icon('logout')} 로그아웃</button>
  <p class="hint" style="text-align:center;margin-top:18px">코스모스&amp;율곡 회원수첩</p>`};
+},
+adminAuth(){
+ if(isAdmin())return {title:'관리자 인증',body:empty('이미 관리자입니다')};
+ return {title:'관리자 인증',body:`<form class="card form" id="adminForm"><p class="hint" style="margin-top:0">클럽에서 받은 관리자 코드를 넣으면 이 계정이 관리자가 됩니다. 코드는 서버에서만 확인합니다.</p>
+ <label class="lb">관리자 코드</label><input class="inp" id="a_code" type="password" autocomplete="off">
+ <button class="btn primary block" type="submit" style="margin-top:18px">${icon('shield')} 관리자 되기</button></form>`};
 },
 pwChange(){
  return {title:'비밀번호 변경',body:`<form class="card form" id="pwForm"><label class="lb" style="margin-top:0">지금 비밀번호</label><input class="inp" id="w_old" type="password" autocomplete="current-password">
